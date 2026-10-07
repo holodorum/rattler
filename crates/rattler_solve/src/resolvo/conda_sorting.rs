@@ -334,17 +334,25 @@ impl<'a, 'repo> SolvableSorter<'a, 'repo> {
                 })
         };
 
+        // Compute each solvable's best versions.
+        let names = sorted_unique_names.len();
+        let mut best_versions = Vec::with_capacity(solvables.len() * names);
+        for &solvable in solvables.iter() {
+            for &name in &sorted_unique_names {
+                best_versions.push(
+                    id_and_deps
+                        .get(&(solvable, name))
+                        .and_then(&mut find_best_selectable_version),
+                );
+            }
+        }
+        let row = |position: usize| &best_versions[position * names..][..names];
+
         // Sort the solvables by comparing the highest version of the shared
         // dependencies in alphabetic order.
-        solvables.sort_by(|a, b| {
-            for &name in sorted_unique_names.iter() {
-                let a_version = id_and_deps
-                    .get(&(*a, name))
-                    .and_then(&mut find_best_selectable_version);
-                let b_version = id_and_deps
-                    .get(&(*b, name))
-                    .and_then(&mut find_best_selectable_version);
-
+        let mut positions = (0..solvables.len()).collect_vec();
+        positions.sort_by(|&a, &b| {
+            for (a_version, b_version) in row(a).iter().zip(row(b)) {
                 // Deal with the case where resolving the version set doesn't actually select a
                 // version
                 let (a_version, b_version) = match (a_version, b_version) {
@@ -361,7 +369,7 @@ impl<'a, 'repo> SolvableSorter<'a, 'repo> {
                 };
 
                 // Compare the versions
-                match a_version.compare_with_strategy(&b_version, self.dependency_strategy) {
+                match a_version.compare_with_strategy(b_version, self.dependency_strategy) {
                     Ordering::Equal => {
                         // If this version is equal, we continue with the next
                         // dependency
@@ -371,10 +379,15 @@ impl<'a, 'repo> SolvableSorter<'a, 'repo> {
             }
 
             // Otherwise sort by timestamp (in reverse, we want the highest timestamp first)
-            let a_record = self.solvable_record(*a);
-            let b_record = self.solvable_record(*b);
+            let a_record = self.solvable_record(solvables[a]);
+            let b_record = self.solvable_record(solvables[b]);
             b_record.timestamp().cmp(&a_record.timestamp())
         });
+        let sorted = positions
+            .iter()
+            .map(|&position| solvables[position])
+            .collect_vec();
+        solvables.copy_from_slice(&sorted);
 
         // Candidate matching reports cancellation as no matching version. Do not
         // retain the resulting partial/timestamp-biased ordering in that case.
