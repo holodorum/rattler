@@ -398,36 +398,26 @@ impl<'a, 'repo> SolvableSorter<'a, 'repo> {
         // dependencies in alphabetic order.
         let mut positions = (0..solvables.len()).collect_vec();
         positions.sort_by(|&a, &b| {
-            for (a_version, b_version) in row(a).iter().zip(row(b)) {
-                // Deal with the case where resolving the version set doesn't actually select a
-                // version
-                let (a_version, b_version) = match (a_version, b_version) {
+            row(a)
+                .iter()
+                .zip(row(b))
+                .map(|pair| match pair {
+                    (Some(a), Some(b)) => a.compare_with_strategy(b, self.dependency_strategy),
                     // If we have a version for either solvable, but not the other, the one with the
                     // version is better.
-                    (Some(_), None) => return Ordering::Less,
-                    (None, Some(_)) => return Ordering::Greater,
-
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
                     // If for neither solvable the version set doesn't select a version for the
                     // dependency we skip it.
-                    (None, None) => continue,
-
-                    (Some(a), Some(b)) => (a, b),
-                };
-
-                // Compare the versions
-                match a_version.compare_with_strategy(b_version, self.dependency_strategy) {
-                    Ordering::Equal => {
-                        // If this version is equal, we continue with the next
-                        // dependency
-                    }
-                    ordering => return ordering,
-                }
-            }
-
-            // Otherwise sort by timestamp (in reverse, we want the highest timestamp first)
-            let a_record = self.solvable_record(solvables[a]);
-            let b_record = self.solvable_record(solvables[b]);
-            b_record.timestamp().cmp(&a_record.timestamp())
+                    (None, None) => Ordering::Equal,
+                })
+                .find(|ordering| ordering.is_ne())
+                .unwrap_or_else(|| {
+                    // Otherwise sort by timestamp (in reverse, we want the highest timestamp first)
+                    let a_record = self.solvable_record(solvables[a]);
+                    let b_record = self.solvable_record(solvables[b]);
+                    b_record.timestamp().cmp(&a_record.timestamp())
+                })
         });
         let sorted = positions
             .iter()
