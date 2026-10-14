@@ -478,7 +478,7 @@ impl<'a> TrackedFeatureVersion<'a> {
     }
 }
 
-pub(super) fn find_highest_version<'a>(
+fn find_highest_version<'a>(
     match_spec_id: VersionSetId,
     solver: &SolverCache<CondaDependencyProvider<'a>>,
     highest_version_cache: &mut HashMap<VersionSetId, Option<(&'a Version, bool)>>,
